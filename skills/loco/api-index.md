@@ -607,7 +607,7 @@ since they restate the trait's own API.
 - `struct` **SessionConfig**` { secret: Option<String>, cookie_name: Option<String>, max_age: Option<u64>, secure: Option<bool>, sign_in_path: Option<String>, store: SessionStoreKind, ttl: Option<u64>, remember_for: Option<u64>, remember_cookie_name: Option<String>, redis_uri: Option<String> }` — Signed cookies and the cookie session, Rails' `secret_key_base` plus its
 - `enum` **SessionStoreKind** — Where [`SessionConfig::store`] keeps the session
 - `struct` **SlackNotifications**` { webhook_url: String }` — Default Slack destination
-- `struct` **SmtpMailer**` { enable: bool, host: String, port: u16, secure: bool, tls: Option<MailerTls>, auth: Option<MailerAuth>, hello_name: Option<String> }` — SMTP mailer configuration structure
+- `struct` **SmtpMailer**` { enable: bool, host: String, port: u16, secure: bool, tls: Option<MailerTls>, auth: Option<MailerAuth>, hello_name: Option<String>, timeout: Option<u64> }` — SMTP mailer configuration structure
 - `struct` **SqliteConfig**` { pragmas: BTreeMap<String, String> }` — `SQLite` settings shared by the database and the `SQLite` queue
 - `struct` **SqliteQueueConfig**` { uri: String, dangerously_flush: bool, enable_logging: bool, max_connections: u32, min_connections: u32, connect_timeout: u64, idle_timeout: u64, poll_interval_sec: u32, num_workers: u32, reaper: Option<ReaperConfig>, retention: Option<RetentionConfig>, pragmas: BTreeMap<String, String> }`
 - `enum` **StorageConfig** — Storage configuration for the application
@@ -1151,7 +1151,7 @@ since they restate the trait's own API.
 - `const` **DEFAULT_MAILER_PRIORITY** — Default background-queue priority used when enqueuing mailer jobs. Higher
 - `struct` **Deliveries**` { count: usize, messages: Vec<String> }`
 - `struct` **Email**` { from: Option<String>, to: String, reply_to: Option<String>, subject: String, text: String, html: String, bcc: Option<String>, cc: Option<String>, headers: Option<EmailHeaders> }` — The structure representing an email details
-- `struct` **EmailHeaders**` { references: Option<String>, in_reply_to: Option<String>, message_id: Option<String> }`
+- `struct` **EmailHeaders**` { references: Option<String>, in_reply_to: Option<String>, message_id: Option<String>, custom: Vec<(String, String)> }`
 - `struct` **EmailSender**` { transport: EmailTransport }` — A structure representing the email sender, encapsulating the chosen
 - `enum` **EmailTransport** — An enumeration representing the possible transport methods for sending
 - `trait` **Mailer** — The `Mailer` trait defines methods for sending emails and processing email

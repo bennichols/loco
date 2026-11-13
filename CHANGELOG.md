@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- **Custom mailer headers** via `EmailHeaders::custom`, such as `List-Unsubscribe`; an invalid, repeated or Loco-set name fails the send. `EmailHeaders` gains a public field, so struct literals need it (or `..Default::default()`).
+- **Mailer SMTP timeout** via `mailer.smtp.timeout`, in milliseconds, passed to lettre, which currently applies it to opening the connection only. `SmtpMailer` gains a public field, so struct literals need it.
+
 ### Changed
 
 - Generated apps also get the skill under `.agents/skills/loco/`, alongside `.claude/skills/loco/`, for Zed, Cursor and other Agent Skills clients (#1857, @paoValle).

@@ -276,6 +276,7 @@ mailer:
       user: postmaster@mg.example.com
       password: "<%= get_env(name='SMTP_PASSWORD') %>"
     hello_name: <string> # optional — EHLO client id
+    timeout: <ms>        # optional — milliseconds; bounds connecting only
 ```
 
 | Key | Type | Required? | Notes |
@@ -288,11 +289,12 @@ mailer:
 | `mailer.smtp.secure` | `bool` | required | `mailer.rs:65`. Legacy shorthand: `true` selects `STARTTLS` (port 587), `false` selects cleartext |
 | `mailer.smtp.tls` | `Option<MailerTls>` | optional — `#[serde(default)]` | `mailer.rs:69`. **When set, overrides `secure`.** Variants (`#[serde(rename_all = "lowercase")]`, `mailer.rs:38-50`): `starttls` (opportunistic TLS, port 587 — what `secure: true` selects), `implicit` (TLS from the first byte, SMTPS, port 465 — required by providers that only accept implicit TLS), `none` (cleartext) |
 | `mailer.smtp.auth` | `Option<MailerAuth>` | optional | `mailer.rs:71` |
-| `mailer.smtp.auth.user` | `String` | required within block | `mailer.rs:93` |
-| `mailer.smtp.auth.password` | `String` | required within block | `mailer.rs:95` |
+| `mailer.smtp.auth.user` | `String` | required within block | `mailer.rs:100` |
+| `mailer.smtp.auth.password` | `String` | required within block | `mailer.rs:102` |
 | `mailer.smtp.hello_name` | `Option<String>` | optional | `mailer.rs:73`. `EHLO` client identifier, sent instead of the hostname |
+| `mailer.smtp.timeout` | `Option<u64>` | optional — `#[serde(default)]` | `mailer.rs:79-80`. Milliseconds, passed to lettre; unset keeps lettre's default of 60 seconds. lettre currently applies it to opening the connection only (lettre PR #1157 would extend it to the whole conversation) |
 
-Effective TLS mode is resolved by `SmtpMailer::tls_mode()` (`mailer.rs:76-87`): if `tls` is set, it wins outright; otherwise `secure: true` → `Starttls`, `secure: false` → `None`.
+Effective TLS mode is resolved by `SmtpMailer::tls_mode()` (`mailer.rs:83-94`): if `tls` is set, it wins outright; otherwise `secure: true` → `Starttls`, `secure: false` → `None`.
 
 ## `queue`
 

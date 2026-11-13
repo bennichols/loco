@@ -109,7 +109,10 @@ mailer:
       user: postmaster@mg.example.com
       password: "<%= get_env(name='SMTP_PASSWORD') %>"
     hello_name: mail.example.com # optional EHLO client id
+    timeout: 10000 # optional, milliseconds; lettre applies it to connecting only
 ```
+
+`timeout` is passed to lettre, which currently applies it to opening the connection only: a server that accepts the connection and then stalls isn't bounded by it ([lettre PR #1157](https://github.com/lettre/lettre/pull/1157) would extend it to the whole conversation).
 
 ### Picking the right `tls` mode
 
@@ -156,7 +159,7 @@ Self::mail_template(
         headers: Some(mailer::EmailHeaders {
             in_reply_to: Some(original_message_id.clone()),
             references: Some(original_message_id.clone()),
-            message_id: None,
+            ..Default::default()
         }),
         locals: json!({ "name": user.name }),
         ..Default::default()
@@ -166,6 +169,20 @@ Self::mail_template(
 ```
 
 `EmailHeaders` maps to `References`/`In-Reply-To`/`Message-ID`, useful for grouping notification emails into a single thread in the recipient's mail client.
+
+Any other header goes in `custom`, as name and value, for example one-click unsubscribe ([RFC 8058](https://www.rfc-editor.org/rfc/rfc8058)):
+
+```rust
+let headers = mailer::EmailHeaders {
+    custom: vec![
+        ("List-Unsubscribe".to_string(), format!("<{unsubscribe_url}>")),
+        ("List-Unsubscribe-Post".to_string(), "List-Unsubscribe=One-Click".to_string()),
+    ],
+    ..Default::default()
+};
+```
+
+Values are sent as unstructured text: encoded and folded, so a line break in one can't start another header, and a word that isn't ASCII is RFC 2047-encoded, so give URLs in ASCII (percent-encoded). An invalid name, a name given twice (in any case), or one Loco sets itself (`From`, `To`, `Cc`, `Bcc`, `Reply-To`, `Subject`, `References`, `In-Reply-To`, `Message-ID`, `Content-Type`, `MIME-Version`, `Content-Transfer-Encoding`), fails the send. A `Sender` header becomes the envelope's `MAIL FROM` (the bounce address), and `Date` replaces the one lettre sets.
 
 ## 6. Run the mailer worker
 

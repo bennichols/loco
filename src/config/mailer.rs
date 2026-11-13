@@ -71,6 +71,13 @@ pub struct SmtpMailer {
     pub auth: Option<MailerAuth>,
     /// Optional EHLO client ID instead of hostname
     pub hello_name: Option<String>,
+    /// SMTP timeout in milliseconds, passed to lettre's transport. lettre
+    /// currently applies it to opening the connection only, not to the TLS
+    /// handshake or the SMTP commands after it (lettre PR #1157 would extend it
+    /// to the whole conversation). When unset, lettre's default (60 seconds)
+    /// applies.
+    #[serde(default)]
+    pub timeout: Option<u64>,
 }
 
 impl SmtpMailer {

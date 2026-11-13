@@ -26,6 +26,18 @@ pub struct EmailHeaders {
     pub references: Option<String>,
     pub in_reply_to: Option<String>,
     pub message_id: Option<String>,
+    /// Any other headers, as name and value, such as `List-Unsubscribe`.
+    ///
+    /// Values are sent as unstructured text: encoded and folded, so a line
+    /// break can't start another header, and any word that isn't ASCII is
+    /// RFC 2047-encoded, so give URLs in ASCII (percent-encoded). A name that
+    /// isn't a valid header name, one Loco sets from the email's own fields
+    /// (`From`, `Subject`, `Message-ID`, `Content-Type` and so on), or a name
+    /// given twice (in any case) fails the send. `Sender`, if given, becomes
+    /// the envelope's `MAIL FROM` (the bounce address), and `Date` replaces
+    /// the one lettre sets.
+    #[serde(default)]
+    pub custom: Vec<(String, String)>,
 }
 
 /// The arguments struct for specifying email details such as sender, recipient,
@@ -72,7 +84,7 @@ pub struct Email {
     pub bcc: Option<String>,
     /// CC header to message
     pub cc: Option<String>,
-    /// Custom headers for the email (e.g., References, In-Reply-To, Message-ID)
+    /// Threading headers (References, In-Reply-To, Message-ID) and any custom ones
     pub headers: Option<EmailHeaders>,
 }
 
@@ -95,7 +107,7 @@ pub struct MultiEmail {
     pub bcc: Vec<String>,
     /// Mailboxes to `CC` header
     pub cc: Vec<String>,
-    /// Custom headers for the email (e.g., References, In-Reply-To, Message-ID)
+    /// Threading headers (References, In-Reply-To, Message-ID) and any custom ones
     pub headers: Option<EmailHeaders>,
 }
 
