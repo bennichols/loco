@@ -1,7 +1,8 @@
 //! `cargo loco generate notifier <name>`: a notification type for an app.
 //!
 //! Renders `src/notifiers/<name>.rs`, then does what a template cannot: create
-//! `src/notifiers/mod.rs` on first use, add a default `notifications:` block
+//! the `notifiers` module's file on first use (`src/notifiers/mod.rs`, or
+//! `src/notifiers.rs` in an app that uses that layout), add a default `notifications:` block
 //! to each `config/*.yaml` that has none, and enable the `notifications`
 //! feature on `loco-rs` in `Cargo.toml`.
 
@@ -13,6 +14,7 @@ use serde_json::json;
 use super::{AppInfo, GenerateResults, Result};
 use crate::{
     oauth::{enable_feature, Edit},
+    rrgen::module_file,
     RRgen,
 };
 
@@ -26,9 +28,10 @@ const ENVIRONMENTS: [&str; 3] = ["development", "test", "production"];
 pub fn generate(rrgen: &RRgen, name: &str, appinfo: &AppInfo) -> Result<GenerateResults> {
     let root = &appinfo.working_dir;
 
-    // The template injects into `mod.rs`, so it must exist first. Created
-    // here and removed again if rendering fails, so a failed run is a no-op.
-    let mod_rs = root.join("src").join("notifiers").join("mod.rs");
+    // The template injects into the module's file, so it must exist first.
+    // Created here and removed again if rendering fails, so a failed run is a
+    // no-op. Which file follows the app's layout, as the injection does.
+    let mod_rs = module_file(root, root.join("src").join("notifiers").join("mod.rs"));
     let created_mod = !mod_rs.exists();
     if created_mod {
         if let Some(dir) = mod_rs.parent() {

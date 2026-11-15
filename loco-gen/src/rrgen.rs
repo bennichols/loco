@@ -119,7 +119,13 @@ pub enum GenResult {
     Generated { message: Option<String> },
 }
 
-fn apply_injection(injection: &Injection, file_content: &str) -> Result<Option<String>> {
+/// Applies `injection` to `file_content`, the content of `path`: the file the
+/// injection resolved to, which errors name.
+fn apply_injection(
+    injection: &Injection,
+    path: &str,
+    file_content: &str,
+) -> Result<Option<String>> {
     let content = &injection.content;
 
     let new_content = if injection.prepend {
@@ -127,22 +133,22 @@ fn apply_injection(injection: &Injection, file_content: &str) -> Result<Option<S
     } else if injection.append {
         format!("{file_content}\n{content}")
     } else if let Some(before) = &injection.before {
-        insert(injection, file_content, "before", |lines| {
+        insert(injection, path, file_content, "before", |lines| {
             lines.iter().position(|ln| before.is_match(ln))
         })?
     } else if let Some(before_last) = &injection.before_last {
-        insert(injection, file_content, "before_last", |lines| {
+        insert(injection, path, file_content, "before_last", |lines| {
             lines.iter().rposition(|ln| before_last.is_match(ln))
         })?
     } else if let Some(after) = &injection.after {
-        insert(injection, file_content, "after", |lines| {
+        insert(injection, path, file_content, "after", |lines| {
             lines
                 .iter()
                 .position(|ln| after.is_match(ln))
                 .map(|p| p + 1)
         })?
     } else if let Some(after_last) = &injection.after_last {
-        insert(injection, file_content, "after_last", |lines| {
+        insert(injection, path, file_content, "after_last", |lines| {
             lines
                 .iter()
                 .rposition(|ln| after_last.is_match(ln))
@@ -159,7 +165,7 @@ fn apply_injection(injection: &Injection, file_content: &str) -> Result<Option<S
         kept.join("\n")
     } else {
         return Err(Error::InjectionHasNoPlacement {
-            path: injection.into.clone(),
+            path: path.to_owned(),
         });
     };
 
@@ -168,13 +174,14 @@ fn apply_injection(injection: &Injection, file_content: &str) -> Result<Option<S
 
 fn insert(
     injection: &Injection,
+    path: &str,
     file_content: &str,
     strategy: &'static str,
     locate: impl Fn(&[&str]) -> Option<usize>,
 ) -> Result<String> {
     let mut lines = file_content.lines().collect::<Vec<_>>();
     let pos = locate(&lines).ok_or_else(|| Error::InjectionAnchorNotFound {
-        path: injection.into.clone(),
+        path: path.to_owned(),
         strategy,
         pattern: injection.pattern(strategy),
         content: indent(&injection.content),
@@ -302,11 +309,7 @@ impl RRgen {
                 .render_str(input, &Context::from_serialize(vars)?, false)?;
         let (frontmatter, body) = parse_template(&rendered)?;
 
-        let path_to = if let Some(working_dir) = &self.working_dir {
-            working_dir.join(frontmatter.to)
-        } else {
-            PathBuf::from(&frontmatter.to)
-        };
+        let path_to = module_file(self.root(), self.resolve(&frontmatter.to));
 
         if frontmatter.skip_exists && path_to.exists() {
             println!("skipped (exists): {}", path_to.display());
@@ -352,18 +355,38 @@ impl RRgen {
         })
     }
 
+    /// The app's root: the working dir, or the process's current directory.
+    fn root(&self) -> &Path {
+        self.working_dir
+            .as_deref()
+            .unwrap_or_else(|| Path::new("."))
+    }
+
+    /// A path from a template's frontmatter, resolved against the working dir.
+    fn resolve(&self, path: &str) -> PathBuf {
+        self.working_dir
+            .as_ref()
+            .map_or_else(|| PathBuf::from(path), |working_dir| working_dir.join(path))
+    }
+
+    /// `path` as the template would name it: relative to the working dir.
+    fn relative(&self, path: &Path) -> String {
+        self.working_dir
+            .as_ref()
+            .and_then(|working_dir| path.strip_prefix(working_dir).ok())
+            .unwrap_or(path)
+            .display()
+            .to_string()
+    }
+
     fn plan_injections(&self, injections: Option<&[Injection]>) -> Result<Vec<(PathBuf, String)>> {
         let mut pending: Vec<(PathBuf, String)> = Vec::new();
 
         for injection in injections.unwrap_or_default() {
-            let injection_to = self.working_dir.as_ref().map_or_else(
-                || PathBuf::from(&injection.into),
-                |working_dir| working_dir.join(&injection.into),
-            );
+            let injection_to = module_file(self.root(), self.resolve(&injection.into));
+            let path = self.relative(&injection_to);
             if !injection_to.exists() {
-                return Err(Error::InjectionTargetMissing {
-                    path: injection.into.clone(),
-                });
+                return Err(Error::InjectionTargetMissing { path });
             }
 
             // Later injections see earlier ones. Two injections into the same
@@ -380,7 +403,7 @@ impl RRgen {
                 continue;
             }
 
-            let Some(new_content) = apply_injection(injection, &file_content)? else {
+            let Some(new_content) = apply_injection(injection, &path, &file_content)? else {
                 // A removal that matched nothing. The file is already in the
                 // state the template asked for, so there is nothing to write
                 // and nothing to report.
@@ -392,6 +415,62 @@ impl RRgen {
 
         Ok(pending)
     }
+}
+
+/// The file a template's `<dir>/mod.rs` names, in the app's own module layout.
+///
+/// A module with children lives either in `<dir>/mod.rs` or, in the Rust 2018
+/// layout (`clippy::mod_module_files`), in `<dir>.rs` beside `<dir>/`.
+/// Templates name the first; an app in the second gets its own file:
+///
+/// - `<dir>/mod.rs` exists: that file, as it always was.
+/// - `<dir>.rs` exists: that file.
+/// - neither: `<dir>.rs` when the app's `src/` uses the 2018 layout
+///   ([`uses_module_files`]), otherwise `<dir>/mod.rs`.
+///
+/// Any other path is returned as it is.
+pub fn module_file(root: &Path, path: PathBuf) -> PathBuf {
+    if path.file_name().is_none_or(|name| name != "mod.rs") || path.exists() {
+        return path;
+    }
+    let Some(sibling) = path.parent().and_then(module_file_beside) else {
+        return path;
+    };
+    if sibling.exists() || uses_module_files(root) {
+        sibling
+    } else {
+        path
+    }
+}
+
+/// `<dir>.rs`, beside `dir`.
+fn module_file_beside(dir: &Path) -> Option<PathBuf> {
+    let name = dir.file_name()?.to_str()?;
+    Some(dir.with_file_name(format!("{name}.rs")))
+}
+
+/// Whether the app at `root` lays its modules out in the Rust 2018 style:
+/// some directory directly under `src/` has its `<dir>.rs` beside it, and none
+/// has a `mod.rs`. An app with no such directory, or with any `mod.rs`
+/// there, keeps the `mod.rs` layout generators have always written.
+fn uses_module_files(root: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(root.join("src")) else {
+        return false;
+    };
+    let mut module_files = false;
+    for dir in entries
+        .filter_map(std::result::Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+    {
+        if dir.join("mod.rs").exists() {
+            return false;
+        }
+        if module_file_beside(&dir).is_some_and(|file| file.exists()) {
+            module_files = true;
+        }
+    }
+    module_files
 }
 
 fn write_file(path: &Path, content: &str) -> Result<()> {

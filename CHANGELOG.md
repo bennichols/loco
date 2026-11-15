@@ -10,6 +10,8 @@
 ### Changed
 
 - Generated apps also get the skill under `.agents/skills/loco/`, alongside `.claude/skills/loco/`, for Zed, Cursor and other Agent Skills clients (#1857, @paoValle).
+- **Generators follow the app's module layout.** In an app that keeps a module in `<dir>.rs` beside `<dir>/` (the Rust 2018 layout, `clippy::mod_module_files`), a template's `<dir>/mod.rs` resolves to that file, for `to:` and for injections, and injection errors name the file actually used. A module a generator creates (notifiers, data) goes in `<dir>.rs` when `src/` uses that layout (no directory directly under it has a `mod.rs`, and at least one has its `<dir>.rs`), otherwise in `<dir>/mod.rs` as before.
+- **`db entities` registers new models in `src/models.rs`** when the app has it and no `src/models/mod.rs`, instead of failing to find `src/models/mod.rs`.
 
 ## 1.3.1 - 2026-11-05
 

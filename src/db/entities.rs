@@ -124,15 +124,28 @@ pub async fn entities<M: MigratorTrait>(ctx: &AppContext) -> AppResult<String> {
             ))
         })?;
 
-    fix_entities()?;
+    fix_entities(Path::new("."))?;
 
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
+/// The `models` module's file: `src/models.rs` in an app that keeps it beside
+/// `src/models/` (the Rust 2018 layout, `clippy::mod_module_files`), otherwise
+/// `src/models/mod.rs`, as it always was.
+fn models_module_file(root: &Path) -> std::path::PathBuf {
+    let mod_rs = root.join("src/models/mod.rs");
+    let beside = root.join("src/models.rs");
+    if !mod_rs.exists() && beside.exists() {
+        beside
+    } else {
+        mod_rs
+    }
+}
+
 // see https://github.com/SeaQL/sea-orm/pull/1947
 // also we are generating an extension module from the get go
-fn fix_entities() -> AppResult<()> {
-    let dir = fs::read_dir("src/models/_entities")?
+fn fix_entities(root: &Path) -> AppResult<()> {
+    let dir = fs::read_dir(root.join("src/models/_entities"))?
         .filter_map(|ent| {
             let ent = ent.unwrap();
             if ent.path().is_file()
@@ -164,9 +177,10 @@ fn fix_entities() -> AppResult<()> {
     }
 
     // generate an empty extension with impl activemodel behavior
-    let mut models_mod = fs::read_to_string("src/models/mod.rs")?;
+    let models_mod_file = models_module_file(root);
+    let mut models_mod = fs::read_to_string(&models_mod_file)?;
     for entity_file in cleaned_entities {
-        let new_file = Path::new("src/models").join(
+        let new_file = root.join("src/models").join(
             entity_file
                 .file_name()
                 .ok_or_else(|| Error::string("cannot extract file name"))?,
@@ -239,7 +253,7 @@ impl Entity {{}}
         }
     }
 
-    fs::write("src/models/mod.rs", models_mod)?;
+    fs::write(&models_mod_file, models_mod)?;
 
     Ok(())
 }
@@ -248,6 +262,51 @@ impl Entity {{}}
 mod tests {
     use super::*;
     use crate::tests_cfg::config::get_database_config;
+
+    const ENTITY: &str = "use sea_orm::entity::prelude::*;
+pub struct Model {
+    pub id: i32,
+}
+impl ActiveModelBehavior for ActiveModel {}
+";
+
+    fn app(models_module: &str) -> tree_fs::Tree {
+        tree_fs::TreeBuilder::default()
+            .drop(true)
+            .add(models_module, "pub mod _entities;\n")
+            .add("src/models/_entities/mod.rs", "pub mod notes;\n")
+            .add("src/models/_entities/notes.rs", ENTITY)
+            .create()
+            .unwrap()
+    }
+
+    #[test]
+    fn fix_entities_registers_the_model_in_mod_rs() {
+        let tree = app("src/models/mod.rs");
+
+        fix_entities(&tree.root).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(tree.root.join("src/models/mod.rs")).unwrap(),
+            "pub mod _entities;\npub mod notes;\n"
+        );
+        assert!(tree.root.join("src/models/notes.rs").exists());
+        assert!(!tree.root.join("src/models.rs").exists());
+    }
+
+    #[test]
+    fn fix_entities_registers_the_model_in_the_module_file_beside_the_directory() {
+        let tree = app("src/models.rs");
+
+        fix_entities(&tree.root).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(tree.root.join("src/models.rs")).unwrap(),
+            "pub mod _entities;\npub mod notes;\n"
+        );
+        assert!(tree.root.join("src/models/notes.rs").exists());
+        assert!(!tree.root.join("src/models/mod.rs").exists());
+    }
 
     #[test]
     fn test_entity_cmd_new() {
